@@ -1,0 +1,5 @@
+{
+  "name": "NeuroFace 3D",
+  "description": "Upload a photo and watch a fully-formed 3D mesh grow dot-by-dot, line-by-line—smooth, precise, and beautifully responsive. It turns a simple picture into an interactive digital sculpture.",
+  "requestFramePermissions": []
+}
