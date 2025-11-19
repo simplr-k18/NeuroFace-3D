@@ -114,7 +114,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
     const wireframeMaterial = new THREE.LineBasicMaterial({
         color: 0x334155, // Slate 700
         transparent: true,
-        opacity: 0.25, 
+        opacity: 0.35, 
         linewidth: 1
     });
     const skullMesh = new THREE.LineSegments(wireframeGeo, wireframeMaterial);
@@ -123,12 +123,12 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
     // 1.2 Glowing Vertices (Enhanced)
     const pointsMaterial = new THREE.PointsMaterial({
         color: 0x0ea5e9, // Sky 500
-        size: 0.022, // Slightly larger for better visibility
+        size: 0.025,
         sizeAttenuation: true,
         transparent: true,
-        opacity: 0.8,
-        blending: THREE.AdditiveBlending, // Glow effect
-        depthWrite: false // Prevents occlusion issues
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
     });
     const pointsMesh = new THREE.Points(sphereGeo, pointsMaterial);
     group.add(pointsMesh);
@@ -153,20 +153,21 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
             maxX = Math.max(maxX, p.x);
         });
         const width = maxX - minX;
-        const radius = width * 0.35; // Slightly smaller than full width
+        const radius = width * 0.35;
 
         const eyeGeo = new THREE.SphereGeometry(radius, 16, 12);
         const eyeMat = new THREE.MeshBasicMaterial({
             color: 0x0ea5e9,
-            wireframe: true, // Tech look
+            wireframe: true,
             transparent: true,
-            opacity: 0.4
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending
         });
         const eyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
         
         // Position slightly ahead for prominence
         eyeMesh.position.copy(center);
-        eyeMesh.position.z += 0.03; 
+        eyeMesh.position.z += 0.04; 
         
         return eyeMesh;
     };
@@ -180,28 +181,26 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
     // 2.2 Mouth (Tube Topology)
     const lipPoints = FEATURES.lipsOuter.map(i => targetPoints[i]).filter(p => p);
     if (lipPoints.length > 0) {
-        // Create a closed spline loop
         const curve = new THREE.CatmullRomCurve3(lipPoints, true);
         const tubeGeo = new THREE.TubeGeometry(curve, 64, 0.008, 6, true);
         const tubeMat = new THREE.MeshBasicMaterial({
             color: 0x0ea5e9,
             transparent: true,
-            opacity: 0.8,
-            wireframe: false // Solid line look
+            opacity: 0.9,
+            wireframe: false
         });
         const mouthMesh = new THREE.Mesh(tubeGeo, tubeMat);
         
-        // Push slightly forward
         mouthMesh.position.z += 0.02; 
         group.add(mouthMesh);
     }
 
-    // 2.3 Contour Lines (Eyebrows & Face Oval)
+    // 2.3 Contour Lines
     const featureMaterial = new THREE.LineBasicMaterial({
         color: 0x0ea5e9,
         linewidth: 2,
         transparent: true,
-        opacity: 0.5
+        opacity: 0.6
     });
 
     const createLineLoop = (indices: number[]) => {
@@ -209,7 +208,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
         indices.forEach(idx => {
             if (targetPoints[idx]) {
                 const p = targetPoints[idx].clone();
-                p.z += 0.01; 
+                p.z += 0.015; 
                 points.push(p);
             }
         });
@@ -217,12 +216,11 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
         return new THREE.Line(geo, featureMaterial);
     };
 
-    // Add remaining lines
     group.add(createLineLoop(FEATURES.leftEyebrow));
     group.add(createLineLoop(FEATURES.rightEyebrow));
     group.add(createLineLoop(FEATURES.faceOval));
 
-    return { group, totalPoints: pos.count + 500 }; 
+    return { group }; 
   };
 
   useEffect(() => {
@@ -236,8 +234,8 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
     sceneRef.current = scene;
     scene.background = new THREE.Color(0xffffff);
 
+    // Standard Camera Setup
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    
     if (isMobile) {
         camera.position.set(0, -0.4, 5.5); 
         camera.lookAt(0, 0.3, 0);
@@ -261,7 +259,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
     }
     controlsRef.current = controls;
 
-    // Initial Placeholder Grid
+    // Initial Placeholder
     const initialGroup = new THREE.Group();
     const sphere = new THREE.SphereGeometry(0.8, 24, 24);
     const wireframe = new THREE.WireframeGeometry(sphere);
@@ -307,7 +305,7 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
     };
   }, []);
 
-  // Generation State Management
+  // --- PROGRESSIVE CONSTRUCTION ANIMATION ---
   useEffect(() => {
     if (appState === AppState.GENERATING && analysisData && sceneRef.current) {
         if (groupRef.current) {
@@ -318,18 +316,37 @@ const ThreeScene: React.FC<ThreeSceneProps> = ({ analysisData, appState, onGener
         sceneRef.current.add(group);
         groupRef.current = group;
 
-        group.scale.set(0, 0, 0);
+        // Prepare for Animation: Reset Draw Ranges
+        group.traverse((child) => {
+            if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments || child instanceof THREE.Points || child instanceof THREE.Line) {
+                if (child.geometry) {
+                    // Start invisible
+                    child.geometry.setDrawRange(0, 0);
+                    child.visible = true;
+                }
+            }
+        });
         
         let start = performance.now();
-        const duration = 1500;
+        const duration = 2500; // 2.5s build time
 
         const loop = (now: number) => {
             const elapsed = now - start;
             const p = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - p, 3); 
+            const eased = 1 - Math.pow(1 - p, 3); // Cubic ease out
             
             setProgress(Math.floor(eased * 100));
-            group.scale.set(eased, eased, eased);
+
+            // Animate Geometry Construction (Dot by Dot)
+            group.traverse((child) => {
+                if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments || child instanceof THREE.Points || child instanceof THREE.Line) {
+                    if (child.geometry) {
+                        const count = child.geometry.index ? child.geometry.index.count : child.geometry.attributes.position.count;
+                        const currentDraw = Math.floor(count * eased);
+                        child.geometry.setDrawRange(0, currentDraw);
+                    }
+                }
+            });
 
             if (p < 1) requestAnimationFrame(loop);
             else onGenerationComplete();
